@@ -79,6 +79,24 @@ graph TD
 6. บันทึกภาพหน้าจอและข้อมูล UUIDs ลงในตารางผลการทดลอง
 7. กดปุ่ม **DISCONNECT** บนแอป nRF Connect เพื่อปล่อยบอร์ดให้พร้อมรับการ Provision
 
+```text
+I (1098) LAB7_3_BLE: --------------------------------------------------
+I (1108) LAB7_3_BLE: [QR CODE URL]: Click or copy URL to scan QR Code:
+I (1118) LAB7_3_BLE: https://espressif.github.io/esp-jumpstart/qrcode.html?data=%7B%22ver%22%3A%22v1%22%2C%22name%22%3A%22PROV_38D0EC%22%2C%22pop%22%3A%22abcd1234%22%2C%22transport%22%3A%22ble%22%7D
+I (1128) LAB7_3_BLE: Payload JSON: {"ver":"v1","name":"PROV_38D0EC","pop":"abcd1234","transport":"ble"}
+I (1138) LAB7_3_BLE: --------------------------------------------------
+I (1148) NimBLE: GAP procedure initiated: advertise; 
+I (1148) NimBLE: disc_mode=2
+I (1148) NimBLE:  adv_channel_map=0 own_addr_type=0 adv_filter_policy=0 adv_itvl_min=256 adv_itvl_max=256
+I (1158) NimBLE: 
+
+I (34288) LAB7_3_BLE: [BLE]: Smartphone Connected to GATT Server!
+I (34408) protocomm_nimble: mtu update event; conn_handle=0 cid=4 mtu=256
+W (77128) LAB7_3_BLE: [BLE]: Smartphone Disconnected from GATT Server
+```
+
+![BLE GATT Server Connection and MTU Negotiation Log](images/lab7-3-ble-gatt-terminal.png)
+
 ---
 
 ### ขั้นตอนที่ 4: ทำการ Provisioning ด้วยแอป ESP BLE Provisioning
@@ -93,13 +111,24 @@ graph TD
 
 ### ขั้นตอนที่ 5: สังเกตการปล่อยหน่วยความจำ Bluetooth (Memory Freeing)
 สังเกตใน Serial Monitor หลังเชื่อมต่อ Wi-Fi สำเร็จ:
+
 ```text
-I (24560) app: Provisioning successful
-I (24570) wifi_prov_scheme_ble: BT memory released
-I (24580) wifi_prov_scheme_ble: BTDM memory released
-I (26120) app: Connected with IP Address: 192.168.1.155
+I (375458) LAB7_3_BLE: [BLE CREDENTIALS RECEIVED]:
+I (375458) LAB7_3_BLE:   -> Target SSID     : A06
+I (375458) LAB7_3_BLE:   -> Target Password : 1234567890
+I (381638) wifi:connected with A06, aid = 1, channel 6, BW20, bssid = 0e:2c:c3:c8:7c:6d
+I (382708) LAB7_3_BLE: =================================================
+I (382708) LAB7_3_BLE: [ONLINE]: Connected to Wi-Fi with IP: 10.248.127.127
+I (382708) LAB7_3_BLE: =================================================
+I (382728) LAB7_3_BLE: [SUCCESS]: BLE Provisioning Successful!
+I (386838) network_prov_mgr: Provisioning stopped
+I (386838) LAB7_3_BLE: [PROV EVENT]: De-initializing BLE & Releasing BT Memory...
+I (386838) network_prov_scheme_ble: BTDM memory released
 ```
-> **ข้อสังเกต:** บอร์ดจะทำการล้างและคืนหน่วยความจำของ Bluetooth Stack ทั้งหมดคืนสู่ระบบ DRAM ทันที ทำให้ประหยัด RAM ได้มหาศาล!
+
+> **ข้อสังเกต:** บอร์ดจะทำการล้างและคืนหน่วยความจำของ Bluetooth Controller (`BTDM memory released`) ทั้งหมดคืนสู่ระบบ DRAM ทันที ทำให้ประหยัด RAM ได้กว่า 80-100 KB!
+
+![ESP32 BLE Provisioning Success and BTDM Memory Released Log](images/lab7-3-ble-provisioning-success.png)
 
 ---
 
@@ -110,19 +139,73 @@ I (26120) app: Connected with IP Address: 192.168.1.155
 ให้นักศึกษาแกะรอยการทำงานของโมดูล BLE Provisioning ใน `main/main.c` แล้วเขียน **ผังโครงสร้างและลำดับเหตุการณ์**:
 
 ### ภารกิจที่ 1: ผังโครงสร้าง GATT Tree & Endpoint Mapping
-ให้นักศึกษาวาดโครงสร้างต้นไม้ (Tree Diagram / Block Diagram) แสดงความสัมพันธ์ระหว่าง:
-- **Primary Service (128-bit UUID: `021a9004-...`)**
-  - **Characteristic UUIDs** แต่ละตัว
-  - **Descriptor 0x2901 (User Description)** ที่ผูกเข้ากับ Protocomm Endpoints (`prov-session`, `prov-config`, `prov-scan`, `proto-ver`, `custom-data`)
+โครงสร้างต้นไม้ (GATT Tree Structure) แสดงความสัมพันธ์ระหว่าง Primary Service, Characteristics และ Descriptors (`0x2901`):
+
+```mermaid
+graph TD
+    Service["📁 Primary Service<br/>UUID: 021a9004-0382-4aea-bff4-6b3f1c5adfb4"]
+    
+    Char1["📄 Characteristic (prov-ctrl)<br/>UUID: 021aff4f-0382-4aea-bff4-6b3f1c5adfb4<br/>Properties: Write, Read"]
+    Desc1["🏷️ Descriptor 0x2901 (User Description)<br/>Value: 'prov-ctrl'"]
+    
+    Char2["📄 Characteristic (prov-scan)<br/>UUID: 021aff50-0382-4aea-bff4-6b3f1c5adfb4<br/>Properties: Write, Read"]
+    Desc2["🏷️ Descriptor 0x2901 (User Description)<br/>Value: 'prov-scan'"]
+    
+    Char3["📄 Characteristic (prov-session)<br/>UUID: 021aff51-0382-4aea-bff4-6b3f1c5adfb4<br/>Properties: Write, Read"]
+    Desc3["🏷️ Descriptor 0x2901 (User Description)<br/>Value: 'prov-session'"]
+    
+    Char4["📄 Characteristic (prov-config)<br/>UUID: 021aff52-0382-4aea-bff4-6b3f1c5adfb4<br/>Properties: Write, Read"]
+    Desc4["🏷️ Descriptor 0x2901 (User Description)<br/>Value: 'prov-config'"]
+    
+    Char5["📄 Characteristic (proto-ver)<br/>UUID: 021aff53-0382-4aea-bff4-6b3f1c5adfb4<br/>Properties: Write, Read"]
+    Desc5["🏷️ Descriptor 0x2901 (User Description)<br/>Value: 'proto-ver'"]
+
+    Service --> Char1
+    Char1 --> Desc1
+    Service --> Char2
+    Char2 --> Desc2
+    Service --> Char3
+    Char3 --> Desc3
+    Service --> Char4
+    Char4 --> Desc4
+    Service --> Char5
+    Char5 --> Desc5
+```
+
+---
 
 ### ภารกิจที่ 2: ผังลำดับการคืนหน่วยความจำ Bluetooth (BLE Lifecycle & Memory Reclaim Flow)
-ให้นักศึกษาวาด Flowchart / Sequence แสดงว่า:
-1. การเชื่อมต่อ BLE ถูกตรวจพบผ่าน Event `PROTOCOMM_TRANSPORT_BLE_CONNECTED` (LED 2 กระพริบเร็ว 100ms)
-2. เมื่อเชื่อมต่อ Wi-Fi สำเร็จ (`WIFI_PROV_CRED_SUCCESS`) $\rightarrow$ เกิด Event `WIFI_PROV_END`
-3. Provisioning Manager สั่งเรียก `esp_bt_mem_release()` เพื่อปล่อย DRAM คืนสู่ระบบอย่างไร
 
-```text
-[พื้นที่สำหรับแนบรูปภาพ Diagram ที่นักศึกษาเขียนขึ้นด้วย Draw.io / Mermaid / วาดมือ]
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as 👤 ผู้ใช้งาน
+    participant App as 📱 Mobile App (ESP BLE Prov)
+    participant BLE as 🔵 ESP32 BLE GATT Server
+    participant WiFi as 📶 Wi-Fi Station & NVS
+    participant Heap as 💾 FreeRTOS Heap (DRAM)
+
+    Note over BLE, Heap: บูตเครื่องเริ่มต้น: จัดสรร BT Memory (~100KB) สำหรับ BLE Advertising<br/>LED 2 (GPIO 4): กระพริบช้า (Slow Blink 500ms)
+    
+    User->>App: ค้นหาและเชื่อมต่อ Bluetooth "PROV_38D0EC"
+    App->>BLE: GATT Connect Request (GATT Server MTU=256)
+    Note over BLE: Event: PROTOCOMM_TRANSPORT_BLE_CONNECTED<br/>LED 2 (GPIO 4): กระพริบเร็ว (Fast Blink 100ms)
+
+    App->>BLE: Handshake ผ่าน Characteristic "prov-session" (PoP: abcd1234)
+    BLE-->>App: Handshake สำเร็จ (Session Established)
+
+    App->>BLE: ส่ง Wi-Fi SSID + Password ผ่าน Characteristic "prov-config"
+    Note over BLE, WiFi: Event: NETWORK_PROV_WIFI_CRED_RECV<br/>บันทึก Credentials ลง NVS
+
+    WiFi->>WiFi: เชื่อมต่อไปยัง Wi-Fi Router
+    Note over WiFi: Event: IP_EVENT_STA_GOT_IP<br/>Event: NETWORK_PROV_WIFI_CRED_SUCCESS
+    
+    Note over BLE: Event: NETWORK_PROV_END<br/>เรียก network_prov_mgr_deinit()
+    BLE->>BLE: ปิด BLE Advertising & ปิด GATT Server
+    BLE->>Heap: เรียก esp_bt_mem_release(ESP_BT_MODE_BTDM)<br/>คืนหน่วยความจำ Bluetooth Stack ทั้งหมด
+    Note over Heap: 🚀 คืน RAM กลับสู่ระบบกว่า 80-100 KB ทันที!
+    
+    Note over WiFi: [State: Online]<br/>LED 2 (GPIO 4): ดับสนิท<br/>LED 1 (GPIO 2): กระพริบ Heartbeat (ติด 200ms ทุก 1s)
 ```
 
 ---
@@ -131,16 +214,22 @@ I (26120) app: Connected with IP Address: 192.168.1.155
 
 | รายการตรวจสอบ | ผลการทดลอง / ข้อมูลที่สังเกตได้ |
 | :--- | :--- |
-| **1. BLE Device Name ที่สแกนเจอ** | `PROV_`.............................. |
-| **2. Primary Service UUID (128-bit)** | ..................................................... |
-| **3. Characteristic Endpoint ที่พบ (0x2901)** | 1. ..................................................<br/>2. ..................................................<br/>3. .................................................. |
-| **4. พฤติกรรมไฟ LED 2 (GPIO 4) ช่วงรอ vs ช่วงต่อ BLE** | ช่วงรอ: .......................................<br/>ช่วงต่อ: ....................................... |
-| **5. พฤติกรรมเมื่อต่อ Wi-Fi สำเร็จ** | มี Log คืนหน่วยความจำ Bluetooth หรือไม่? (มี / ไม่มี) |
+| **1. BLE Device Name ที่สแกนเจอ** | `PROV_38D0EC` (Bluetooth MAC: `84:1f:e8:38:d0:ee`) |
+| **2. Primary Service UUID (128-bit)** | `021a9004-0382-4aea-bff4-6b3f1c5adfb4` |
+| **3. Characteristic Endpoints ที่พบ (Descriptor 0x2901)** | 1. `021aff4f-...` $\rightarrow$ **`prov-ctrl`**<br/>2. `021aff50-...` $\rightarrow$ **`prov-scan`**<br/>3. `021aff51-...` $\rightarrow$ **`prov-session`**<br/>4. `021aff52-...` $\rightarrow$ **`prov-config`**<br/>5. `021aff53-...` $\rightarrow$ **`proto-ver`** |
+| **4. พฤติกรรมไฟ LED 2 (GPIO 4) ช่วงรอ vs ช่วงต่อ BLE** | ช่วงรอ Advertising: กระพริบช้า (ติด 500ms / ดับ 500ms)<br/>ช่วงต่อ BLE Connected: กระพริบเร็ว (ติด 100ms / ดับ 100ms)<br/>หลังต่อ Wi-Fi สำเร็จ: ดับสนิท (OFF) |
+| **5. พฤติกรรมเมื่อต่อ Wi-Fi สำเร็จ** | **มี** ข้อความใน Log: `network_prov_scheme_ble: BT memory released` เพื่อคืนหน่วยความจำ Bluetooth Controller กลับสู่ Heap DRAM |
 
 ---
 
 ## 7. คำถามท้ายการทดลอง (Post-Lab Questions)
-1. เหตุใด BLE Provisioning จึงไม่ส่งผลให้สัญญาณ Wi-Fi บนสมาร์ตโฟนของผู้ใช้หลุดระหว่างทำรายการ?
-2. Descriptor `0x2901` มีความสำคัญอย่างไรต่อการที่แอปพลิเคชันมือถือจะทราบว่า Characteristic แต่ละตัวใช้ทำหน้าที่อะไร?
-3. การที่ ESP-IDF มีฟังก์ชัน `esp_bt_mem_release()` มีประโยชน์อย่างไรต่อการทำงานของแอปพลิเคชัน IoT หลังเชื่อมต่อ Wi-Fi สำเร็จ?
+
+1. **เหตุใด BLE Provisioning จึงไม่ส่งผลให้สัญญาณ Wi-Fi บนสมาร์ตโฟนของผู้ใช้หลุดระหว่างทำรายการ?**
+   * **คำตอบ:** เพราะ BLE (Bluetooth Low Energy) ทำงานอยู่บนคลื่นความถี่วิทยุและโปรโตคอลสแต็กคนละส่วนกับ Wi-Fi Interface ของสมาร์ตโฟน โทรศัพท์จึงสามารถสื่อสารรับส่งข้อมูลกับ ESP32 ผ่านบลูทูธได้โดยตรง โดยที่โมเด็ม Wi-Fi และ Cellular Data (4G/5G) ของสมาร์ตโฟนยังคงเชื่อมต่ออินเทอร์เน็ตได้ตามปกติ ไม่จำเป็นต้องตัดการเชื่อมต่อ Wi-Fi ไปเกาะ SoftAP เหมือนใน Lab 7.2
+
+2. **Descriptor `0x2901` มีความสำคัญอย่างไรต่อการที่แอปพลิเคชันมือถือจะทราบว่า Characteristic แต่ละตัวใช้ทำหน้าที่อะไร?**
+   * **คำตอบ:** Descriptor **`0x2901` (Characteristic User Description)** ทำหน้าที่เป็นป้ายกำกับข้อความ (Human-readable String / Name Identifier) ให้กับแต่ละ Characteristic เนื่องจาก 128-bit UUID ของ Characteristic เป็นชุดตัวเลขรหัสฐานสิบหกที่แอปพลิเคชันภายนอกไม่ทราบล่วงหน้าว่าท่อใดใช้สำหรับอะไร เมื่อแอปพลิเคชันมือถือเชื่อมต่อเข้ามา จึงอ่านค่าจาก Descriptor `0x2901` เพื่อระบุและ Map ท่อรับส่งข้อมูลเข้ากับ Protocomm Endpoints ที่ต้องการ เช่น `"prov-session"` สำหรับ Handshake, `"prov-config"` สำหรับส่งรหัสผ่าน Wi-Fi ได้อย่างถูกต้องและยืดหยุ่น
+
+3. **การที่ ESP-IDF มีฟังก์ชัน `esp_bt_mem_release()` มีประโยชน์อย่างไรต่อการทำงานของแอปพลิเคชัน IoT หลังเชื่อมต่อ Wi-Fi สำเร็จ?**
+   * **คำตอบ:** Bluetooth Protocol Stack (โดยเฉพาะ Bluetooth Controller และ Host) มีขนาดใหญ่และต้องใช้พื้นที่แรมภายในชิป (SRAM/DRAM) ปริมาณมาก (ประมาณ 80 - 100 KB) ซึ่งหลังจากขั้นตอน Provisioning เสร็จสิ้น อุปกรณ์ IoT ส่วนใหญ่จะทำงานผ่าน Wi-Fi เพียงอย่างเดียว การเรียก `esp_bt_mem_release(ESP_BT_MODE_BTDM)` จึงเป็นการปิดการทำงานของระบบวิทยุบลูทูธและคืนพื้นที่หน่วยความจำทั้งหมดกลับเข้าสู่ FreeRTOS Heap DRAM ทำให้เฟิร์มแวร์มีแรมคงเหลือสำหรับ Application, MQTT, TLS/SSL Buffer, และ Web Server เพิ่มขึ้นอย่างมหาศาล ป้องกันปัญหา Out of Memory (OOM)
 
