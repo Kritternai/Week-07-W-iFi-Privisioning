@@ -1,1 +1,41 @@
-**/build/**
+# ESP-IDF Build artifacts
+build/
+**/build/
+*.bin
+*.elf
+*.map
+
+# ESP-IDF Configuration backups
+sdkconfig.old
+sdkconfig.ci
+
+# Managed components downloaded by ESP Component Manager
+managed_components/
+**/managed_components/
+dependencies.lock
+**/dependencies.lock
+
+# Language server & Clangd caches
+.cache/
+**/.cache/
+.clangd/
+**/.clangd/
+
+# macOS system files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Editor and IDE temporary files
+.idea/
+*.sublime-project
+*.sublime-workspace
+.project
+.cproject
+.settings/
+
+# Logs and temporary files
+*.log
+*.tmp
